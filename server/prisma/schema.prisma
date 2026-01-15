@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  committee
+  teacher
+  admin
+}
+
+enum InvitePurpose {
+  bind_student
+  bind_committee
+}
+
+enum SessionType {
+  morning
+  afternoon
+  evening
+}
+
+enum LeaveType {
+  personal
+  sick
+  other
+}
+
+enum LeaveStatus {
+  pending
+  approved
+  rejected
+  canceled
+}
+
+enum AttendanceBucket {
+  early
+  ontime
+  late
+  absent
+  leave
+}
+
+enum PointsType {
+  attendance
+  activity
+  committee
+  manual_adjust
+}
+
+model User {
+  user_id     Int      @id @default(autoincrement())
+  username    String?  @unique
+  password_hash String?
+  role        UserRole
+  enabled     Boolean  @default(true)
+  student_id  Int?     @unique
+  created_at  DateTime @default(now())
+
+  student     Student? @relation(fields: [student_id], references: [student_id])
+  created_invites InviteCode[] @relation("InvitesCreated")
+  review_leaves Leave[] @relation("LeaveReviewer")
+  attendance_runs AttendanceRun[] @relation("AttendanceOperator")
+  points_ledgers PointsLedger[] @relation("PointsOperator")
+  audit_logs AuditLog[]
+}
+
+model Student {
+  student_id   Int      @id @default(autoincrement())
+  seat_no      Int      @unique
+  name         String
+  gender       String
+  birth_date   DateTime
+  dorm_no      String
+  id_card_no   String
+  father_name  String
+  father_phone String
+  mother_name  String
+  mother_phone String
+  home_address String
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  user         User?
+  wx_bindings  WxBinding[]
+  leaves       Leave[]
+  attendance_records AttendanceRecord[]
+  points_ledgers PointsLedger[]
+}
+
+model WxBinding {
+  binding_id Int @id @default(autoincrement())
+  wx_openid  String @unique
+  student_id Int
+  bound_role UserRole
+  bound_at   DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [student_id])
+}
+
+model Semester {
+  semester_id String @id
+  name        String
+  start_date  DateTime
+  end_date    DateTime
+
+  points_ledgers PointsLedger[]
+}
+
+model InviteCode {
+  invite_id  Int @id @default(autoincrement())
+  code       String @unique
+  purpose    InvitePurpose
+  expires_at DateTime?
+  max_uses   Int @default(1)
+  used_count Int @default(0)
+  created_by_user_id Int
+  created_at DateTime @default(now())
+  used_at    DateTime?
+
+  created_by User @relation("InvitesCreated", fields: [created_by_user_id], references: [user_id])
+}
+
+model Leave {
+  leave_id Int @id @default(autoincrement())
+  student_id Int
+  date     DateTime
+  session  SessionType
+  leave_type LeaveType
+  reason   String?
+  status   LeaveStatus @default(pending)
+  reviewer_user_id Int?
+  review_comment String?
+  created_at DateTime @default(now())
+
+  student Student @relation(fields: [student_id], references: [student_id])
+  reviewer User? @relation("LeaveReviewer", fields: [reviewer_user_id], references: [user_id])
+
+  @@unique([student_id, date, session])
+}
+
+model AttendanceRun {
+  attendance_run_id Int @id @default(autoincrement())
+  date     DateTime
+  session  SessionType
+  selected_time String
+  operator_user_id Int
+  summary_text String?
+  created_at DateTime @default(now())
+
+  operator User @relation("AttendanceOperator", fields: [operator_user_id], references: [user_id])
+  attendance_records AttendanceRecord[]
+  audit_logs AuditLog[]
+}
+
+model AttendanceRecord {
+  attendance_id Int @id @default(autoincrement())
+  attendance_run_id Int
+  student_id Int
+  bucket AttendanceBucket
+  points_delta Int
+  created_at DateTime @default(now())
+
+  attendance_run AttendanceRun @relation(fields: [attendance_run_id], references: [attendance_run_id])
+  student Student @relation(fields: [student_id], references: [student_id])
+
+  @@unique([attendance_run_id, student_id])
+}
+
+model PointsLedger {
+  points_id Int @id @default(autoincrement())
+  semester_id String?
+  student_id Int
+  points_type PointsType
+  source_ref String
+  title       String
+  points_value Int
+  operator_user_id Int
+  date DateTime
+  created_at DateTime @default(now())
+
+  semester Semester? @relation(fields: [semester_id], references: [semester_id])
+  student Student @relation(fields: [student_id], references: [student_id])
+  operator User @relation("PointsOperator", fields: [operator_user_id], references: [user_id])
+}
+
+model AuditLog {
+  audit_log_id Int @id @default(autoincrement())
+  attendance_run_id Int
+  student_id Int
+  old_bucket AttendanceBucket
+  new_bucket AttendanceBucket
+  reason String
+  operator_user_id Int
+  created_at DateTime @default(now())
+
+  attendance_run AttendanceRun @relation(fields: [attendance_run_id], references: [attendance_run_id])
+  operator User @relation(fields: [operator_user_id], references: [user_id])
+}
